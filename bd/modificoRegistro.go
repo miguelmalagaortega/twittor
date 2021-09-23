@@ -49,7 +49,7 @@ func ModificoRegistro(u models.Usuario, ID string) (bool, error) {
 		registro["sitioWeb"] = u.SitioWeb
 	}
 
-	updString := bson.M{
+	updtString := bson.M{
 		"$set": registro,
 	}
 
@@ -59,7 +59,7 @@ func ModificoRegistro(u models.Usuario, ID string) (bool, error) {
 		"_id": bson.M{"$eq": objID},
 	}
 
-	_, err := col.UpdateOne(ctx, filtro, updString)
+	_, err := col.UpdateOne(ctx, filtro, updtString)
 
 	if err != nil {
 		return false, err

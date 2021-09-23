@@ -1036,17 +1036,19 @@ func ProcesoToken(tk string) (*models.Claim, bool, string, error){
   // creamos la variable relacionandola con el puntero
   claims := &models.Claim{}
 
-  splitToken := strings.Split(tk,"Bearer")
+  // En versiones anteriores el token venia con la palabra "Bearer" al inicio, ahora ya no lo hace asi que estas lineas ya no son necesarias
 
-  if len(splitToken) != 2 {
+  // splitToken := strings.Split(tk,"Bearer")
+
+  // if len(splitToken) != 2 {
     // como no tenemos un error que devolver usamos el paquete errors
     // los errores generados no pueden tener ni mayusculas ni signos
-    return claims, false, string(""), errors.New("formato de token invalido")
-  }
+    // return claims, false, string(""), errors.New("formato de token invalido")
+  // }
 
   // de los dos elementos que trae el vector splitToken traemos el segundo que es el token
   // ademas eliminamos los espacios en blanco
-  tk = strings.TrimSpace(splitToken[1])
+  // tk = strings.TrimSpace(splitToken[1])
 
   tkn, err := jwt.ParseWithClaims(tk, claims, func(token *jwt.Token)(interface{}, error){
     return miClave, nil

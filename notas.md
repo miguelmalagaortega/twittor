@@ -6,7 +6,7 @@ Eliminar remotos con
 
 > git remote rm nombreDelRemoto
 
-Cargar los archivos a guthub por primera vez
+Cargar los archivos a github por primera vez
 
 > git init
 > git add .
@@ -14,3 +14,5 @@ Cargar los archivos a guthub por primera vez
 > git branch -M main
 > git remote add origin git@github.com:miguelmalagaortega/twittor.git
 > git push -u origin main
+
+Cargar los archivos a heroku

@@ -33,7 +33,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	// llamamos a la funcion IntentoLogin para ver si nos devulve un usuario o un error
 	documento, existe := bd.IntentoLogin(t.Email, t.Password)
 
-	if existe == false {
+	if !existe {
 		http.Error(w, "Usuario y/o contraseña invalida", 400)
 		return
 	}

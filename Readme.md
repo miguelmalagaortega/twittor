@@ -53,7 +53,7 @@ git push -u origin main
 - Luego ponemos en consola el siguiente codigo: `heroku login`, esto nos llevara a cargar las credenciales de Heroku.
 - Antes de esto ya se debio haber hecho la creacion de git init, lo cual se debio realizar en la parte *Iniciamos el repositorio git*.
 - Agregamos el ***remote*** de Heroku `heroku git:remote -a twittordcn`
-- Subimos la aplicacion a Heroku `git push heroku master`
+- Subimos la aplicacion a Heroku `git push heroku main`
 
 ***Nota:*** Antes de poder subir todo a Heroku debemos de crear algunos ***archivos de go*** para que se pueda hacer una configuracion adecuada y no tener errores.
 
@@ -643,7 +643,7 @@ func ChequeoYaExisteUsuario(email string) (models.Usuario, bool, string) {
 
 - segundo lo subimos a Heroku
 
-> git push heroku master
+> git push heroku main
 
 ## Preparando POSTMAN para las pruebas
 
@@ -898,7 +898,7 @@ func Manejadores() {
 
 - segundo lo subimos a Heroku
 
-> git push heroku master
+> git push heroku main
 
 ## Preparando POSTMAN para las pruebas
 
@@ -1172,11 +1172,11 @@ func VerPerfil(w http.ResponseWriter, r *http.Request){
 
 > git add .
 > git commit -m "verPerfil"
-> git push origin master
+> git push origin main
 
 2. Hacemos lo mismo con heroku
 
-> git push heroku master
+> git push heroku main
 
 3. creamos eun nuevo request en Postman
 

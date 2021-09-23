@@ -1185,3 +1185,199 @@ func VerPerfil(w http.ResponseWriter, r *http.Request){
 ![imagen16](/img/16.png)
 
 4. Ahora ya podemos hacer el send y ver si nos devuelde los datos
+
+## EndPoint modificarPerfil
+
+### Rutina modificarRegistro
+
+- Creamos el archivo ***modificoRegistro.go*** en la carpeta ***bd***
+
+```go
+package bd
+
+import (
+	"context"
+	"time"
+
+	"github.com/miguelmalagaortega/twittor/models"
+  "go.mongodb.org/mongo-driver/bson"
+  "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+func ModificoRegistro(u models.Usuario, ID string) (bool, error){
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("usuarios")
+
+  // make, permite crear slice o mapas
+  registro := make(map[string]interface{})
+
+  if len(u.Nombre) > 0 {
+    registro["nombre"] = u.Nombre
+  }
+
+  if len(u.Apellidos) > 0 {
+    registro["apellidos"] = u.Apellidos
+  }
+
+  registro["fechaNacimiento"] = u.FechaNacimiento
+
+  if len(u.Avatar) > 0 {
+    registro["avatar"] = u.Avatar
+  }
+
+  if len(u.Banner) > 0 {
+    registro["banner"] = u.Banner
+  }
+
+  if len(u.Biografia) > 0 {
+    registro["biografia"] = u.Biografia
+  }
+
+  if len(u.Ubicacion) > 0 {
+    registro["ubicacion"] = u.Ubicacion
+  }
+
+  if len(u.SitioWeb) > 0 {
+    registro["sitioWeb"] = u.SitioWeb
+  }
+
+  // con esto tenemos la sentencia para actualizar
+  updString := bson.M{
+    "$set" : registro,
+  }
+
+  objID, _ := primitive.ObjectIDFromHex(ID)
+
+  // ponemos el filtro para decir a que id le hara la actualizacion
+  filtro := bson.M{
+    "_id": bson.M{"$eq":objID},
+  }
+
+  // realizamos la actualizacion
+  _, err := col.UpdateOne(ctx, filtro, updString)
+
+  if err != nil {
+    return false, err
+  }
+
+  return true, nil
+
+}
+```
+
+### Funcion enrouters para modificar
+
+- Creamos el archivo ***modificarPerfil.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/miguelmalagaortega/twittor/models"
+	"github.com/miguelmalagaortega/twittor/bd"
+)
+
+func ModificarPerfil(w http.ResponseWriter, r *http.Request) {
+
+  var t models.Usuario
+
+  err := json.NewDecoder(r.Body).Decode(&t)
+
+  if err != nil {
+    http.Error(w, "Datos incorrectos " + err.Error(), 400)
+    return
+  }
+
+  // En esta funcion pasamos el modelo de usuario y la variable global IDUsuario
+  status, err := bd.ModificoRegistro(t, IDUsuario)
+
+  if err != nil {
+    http.Error(w, "Ocurrio un error al intentar modificar el registro. Reintente nuevamente " + err.Error(), 400)
+    return
+  }
+
+  if !status {
+    http.Error(w, "No se ha logrado modificar el registro del usuario", 400)
+    return
+  }
+
+  w.WriteHeader(http.StatusCreated)
+
+}
+```
+
+## Probando el ENDPOINT
+
+### Actualizamos el handlers
+
+- Abrimos el archivo ***handlers.go*** de la carpeta ***handlers***
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+  // Agregamos esta linea
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+
+
+	PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+### Creamos un nuevo request en Postman
+
+1. Creamos el nuevo request
+
+![imagen17](/img/17.png)
+
+2. En el body del request ponemos la siguiente informacion
+
+```js
+{
+  "nombre":"Miguel Angelo",
+  "apellidos":"Malaga Ortega",
+  "fechaNacimiento":"1988-05-02T00:00:00z",
+  "banner":"",
+  "ubicacion":"Ciudad de Lima",
+  "biografia":"Estudiante de ingenieria de sistemas y electrocina que se encuentra en proceso de aprender la programacion en go",
+  "sitioWeb":"https://www.google.com"
+}
+```
+
+![imagen18](/img/18.png)
+
+3. Ahora ya podemos hacer un Send y ver lo que ocurre

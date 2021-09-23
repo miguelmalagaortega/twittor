@@ -1381,3 +1381,189 @@ func Manejadores() {
 ![imagen18](/img/18.png)
 
 3. Ahora ya podemos hacer un Send y ver lo que ocurre
+
+## Creacion del EndPoint, Grabar Tweet
+
+### Rutina insertr Tweet
+
+- Creamos el archivo ***insertoTweet.go*** en la carpeta ***bd***
+
+```go
+package bd
+
+import (
+  "context"
+  "time"
+
+  "github.com/miguelmalagaortega/twittor/models"
+  "go.mongodb.org/mongo-driver/bson"
+  "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+func InsertoTweet(t models.GraboTweet) (string, bool, error){
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("tweet")
+
+  registro := bson.M{
+		"userid":  t.UserID,
+		"mensaje": t.Mensaje,
+		"fecha":   t.Fecha,
+	}
+
+	result, err := col.InsertOne(ctx, registro)
+
+	if err != nil {
+		return "", false, err
+	}
+
+	objID, _ := result.InsertedID.(primitive.ObjectID)
+
+	return objID.String(), true, ni
+}
+```
+
+### Creacion del modelo grabar Tweet
+
+- Creamos el archivo ***graboTweet.go*** en la carpeta ***models***
+
+```go
+package models
+
+import "time"
+
+type GraboTweet struct {
+  // recordar que en bson la esttructura es
+  // nombre tipo `bson:"nombreQueBuscaBD" json:"ParaRepresentacionJson"
+  UserID  string `bson:"userid" json:"userid,omitempty"`
+  Mensaje  string `bson:"mensaje" json:"mensaje,omitempty"`
+  Fecha  time.Time `bson:"fecha" json:"fecha,omitempty"`
+}
+```
+
+### Creacion del modelo Tweet
+
+- Creamos el archivo ***tweet.go*** en la carpeta ***models***
+
+```go
+package models
+
+type Tweet struct {
+  Mensaje string `bson:"mensaje" json:"mensaje"`
+}
+```
+
+### Creacion de la ruta a GraboTweet
+
+- Creamos el archivo ***graboTweet.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+  "encoding/json"
+  "net/http"
+  "time"
+
+  "github.com/miguelmalagaortega/twittor/models"
+  "github.com/miguelmalagaortega/twittor/bd"
+)
+
+func GraboTweet(w http.ResponseWriter, r *http.Request){
+  var mensaje models.Tweet
+
+  err := json.NewDecoder(r.Body).Decode(&mensaje)
+
+  registro := models.GraboTweet{
+    UserID: IDUsuario,
+    Mensaje: mensaje.Mensaje,
+    Fecha: time.Now(),
+  }
+
+  _, status, err := bd.InsertoTweet(registro)
+
+  if err != nil {
+    http.Error(w, "Ocurrio un error al intentar insertar el registro, reintente nuevamente " + err.Error(), 400)
+    return
+  }
+
+  if !status {
+    http.Error(w, "Nose ha logrado insertar el Tweet", 400)
+    return
+  }
+
+  w.WriteHeader(http.StatusCreated)
+}
+```
+
+### Probando el EndPoint de Tweet
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+  // Agregamos esta linea
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+
+	PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos un nuevo request en POSTMAN
+
+4.1. Como token es una variable en comun para ambos entornos, borramos esas variables de cada uno de los ***Environmet***
+4.2. Pasaremos a crear una variable global que guardara el token
+
+![imagen 19](/img/19.png)
+![imagen 20](/img/20.png)
+
+4.3. Creamos el request Tweet
+
+![imagen 21](/img/21.png)
+![imagen 22](/img/22.png)
+
+4.4. Con esto ya podemos probar con el Send
+
+

@@ -1566,4 +1566,209 @@ func Manejadores() {
 
 4.4. Con esto ya podemos probar con el Send
 
+## Creacion del ENDPOINT leer Tweets
 
+### Creamos el modelos devuelvotweets
+
+- Creamos el archivo ***devuelvotweets.go*** en la carpeta ***models***
+
+```go
+package models
+
+import (
+  "time"
+  "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+type DevuelvoTweets struct {
+  ID primitive.ObjectID `bson:"_id" json:"_id,omitempty"`
+  UserID  string `bson:"userid" json:"userId,omitempty"`
+  Mensaje string `bson:"mensaje" json:"mensaje,omitempty"`
+  Fecha time.Time `bson:"fecha" json:"fecha,omitempty"`
+}
+```
+
+### Creamos el la base de datos el leoTweets
+
+- Creamos el archivo ***leoTweets.go*** en la carpeta ***bd***
+
+```go
+package bd
+
+import (
+  "context"
+  "time"
+  "log"
+  "github.com/miguelmalagaortega/twittor/models"
+  "go.mongodb.org/mongo-driver/bson"
+  "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+// Aqui ingresaremos en la paginacion
+func LeoTweets(ID string, pagina int64) ([]*models.DevuelvoTweets, bool){
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("tweet")
+
+  var resultados []*models.DevuelvoTweets
+
+  condicion := bson.M{
+    "userid": ID,
+  }
+
+  opciones := options.Find()
+  // para devolver 20
+  opciones.SetLimit(20)
+  // que campo usamos para ordenar, en este caso el -1 es de forma descendente
+  opciones.SetSort(bson.D{
+    {key:"fecha",
+    Value: -1}
+  })
+  // Cuantos documentos tengo que ir salteando de pagina en pagina
+  opciones.SetSkip((pagina-1)*20)
+
+  // creamos un cursor, que es como una tabla donde se guardaran los datos para luego irlos procesando
+  cursor, err := col.Find(ctx, condicion, opciones)
+
+  if err != nil {
+    log.Fatal(err.Error())
+    return resultados, false
+  }
+
+  // grabamos todos los tweets devueltos en el resultado
+  for cursor.Next(context.TODO()){
+    var registro models.DevuelvoTweets
+
+    err := cursor.Decode(&registro)
+
+    if err != nil {
+      return resultados, false
+    }
+
+    resultados = append(resultados, &registro)
+  }
+
+  return resultados, true
+}
+```
+
+### Creacion de la ruta para leer los Tweets
+
+- Creamos el archivo ***leoTweets.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+  "encoding/json"
+  "net/http"
+  "strconv"
+  "github.com/miguelmalagaortega/twittor/bd"
+)
+
+func LeoTweets(w http.ResponseWriter, r *http.Request){
+
+  // Obtenemos un parametro enviado por la url
+  ID := r.URL.Query().Get("id")
+
+  if len(ID) < 1 {
+    http.Error(w, "Debe enviar el parametro id", http.StatusBadRequest)
+    return
+  }
+
+  if len(r.URL.Query().Get("pagina")) < 1 {
+    http.Error(w, "Debe enviar el parametro pagina", http.StatusBadRequest)
+    return
+  }
+
+  // conversion de un string a un entero
+  pagina, err := strconv.Atoi(r.URL.Query().Get("pagina"))
+
+  if err != nil {
+    http.Error(w, "Debe enviar el parametro pagina con un valor mayor a 0", http.StatusBadRequest)
+    return
+  }
+
+  // hacemos la conversion para la paginacion, el entero lo convertimos a int64
+  pag := int64(pagina)
+
+  respuesta, correcto := bd.LeoTweets(ID, pag)
+
+  if !correcto {
+    http.Error(w, "Error al leer los tweets", http.StatusBadRequest)
+    return
+  }
+
+  w.Header().Set("Content-type","application/json")
+  w.WriteHeader(http.StatusCreated)
+  json.NewEncoder(w).Encode(respuesta)
+
+}
+```
+
+### Probando el EndPoint de LeerTweet
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+  // Agregamos esta linea
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+
+	PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos un nuevo request en POSTMAN
+
+4.1. Creamos el request LeoTweet
+
+4.1.1. Le agregamos el id del userid de la tabla tweets
+![imagen 23](/img/23.png)
+4.1.2. Ahora agregamos los correspondientes Headers
+![imagen 24](/img/24.png)
+
+4.4. Con esto ya podemos probar con el Send

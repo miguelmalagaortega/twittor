@@ -2682,3 +2682,226 @@ func Manejadores() {
 5.1. Nos devolvera un status true si existe relacion con el usuario
 5.2. Nos devolvera un status false si no existe relacion con el usuario
 
+## Listar a los usuarios
+
+### 
+
+- Creamos el archivo ***leoUsuariosTodos.go*** en la carpeta ***routers***
+
+```go
+package bd
+
+import (
+  "context"
+  "time"
+  "fmt"
+
+  "github.com/miguelmalagaortega/twittor/models"
+  "go.mongodb.org/mongo-driver/bson"
+  "go.mongodb.org/mongo-driver/mongo/options"
+)
+
+func LeoUsuariosTodos(ID string, page int64, search string, tipo string) ([]*models.Usuario, bool){
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("usuarios")
+
+  var results []*models.Usuario
+
+  findOptions := options.Find()
+  findOptions.SetSkip((page-1)*20)
+  findOptions.SetLimit(20)
+
+  // creaomos una expresion regular
+  query := bson.M{
+    "nombre": bson.M{"$regex": `(?i)` + search}
+  }
+
+  cur, err := col.Find(ctx, query, findOptions)
+
+  if err != nil {
+    fmt.Println(err.Error())
+    return results, false
+  }
+
+  var encontrado, incluir bool
+
+  for cur.Next(ctx){
+    var s models.Usuario
+    err := cur.Decode(&s)
+
+    if err != nil {
+      fmt.Println(err.Error())
+      return results, false
+    }
+
+    var r models.Relacion
+    r.UsuarioID = ID
+    r.UsuarioRelacionID = s.ID.Hex()
+
+    incluir = false
+
+    encontrado, err = ConsultoRelacion(r)
+
+    if tipo == "new" && !encontrado {
+      incluir = true
+    }
+
+    if tipo == "follow" && encontrado {
+      incluir = true
+    }
+
+    if r.UsuarioRelacionID == ID {
+      incluir = false
+    }
+
+    if incluir {
+      s.Password=""
+      s.Biografia=""
+      s.SitioWeb=""
+      s.Ubicacion=""
+      s.Banner=""
+      s.Email=""
+
+      results = append(results, &s)
+    }
+
+  }
+
+  err = cur.Err()
+
+  if err != nil {
+    fmt.Println(err.Error())
+    return results, false
+  }
+
+  cur.Close(ctx)
+
+  return results, true
+
+}
+```
+
+### Creamos la lista de usuarios en los routers
+
+- Creamos el archivo ***listaUsuarios.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+  "encoding/json"
+  "net/http"
+  "strconv"
+
+  "github.com/miguelmalagaortega/twittor/bd"
+)
+
+func ListaUsuarios(w http.ResponseWriter, r *http.Request){
+
+  typeUser := r.URL.Query().Get("type")
+  page := r.URL.Query().Get("page")
+  search := r.URL.Query().Get("search")
+
+  pagTemp, err := strconv.Atoi(page)
+
+  if err != nil {
+    http.Error(w, "Debe enviar el parametro pagina como entero mayor a 0", http.StatusBadRequest)
+    return
+  }
+
+  pag := int64(pagTemp)
+
+  result, status := bd.LeoUsuariosTodos(IDUsuario, pag, search, typeUser)
+
+  if !status {
+    http.Error(w, "Error al leer los usuarios", http.StatusBadRequest)
+    return
+  }
+
+  w.Header().Set("Content-Type","application/json")
+  w.WriteHeader(http.StatusCreated)
+  json.NewEncoder(w).Encode(result)
+}
+```
+
+### Probando el EndPoint de lista de usuarios
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+	router.HandleFunc("/eliminarTweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.EliminarTweet))).Methods("DELETE")
+
+	router.HandleFunc("/subirAvatar", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirAvatar))).Methods("POST")
+	router.HandleFunc("/subirBanner", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirBanner))).Methods("POST")
+	router.HandleFunc("/obtenerAvatar", middlew.ChequeoBD(routers.ObtenerAvatar)).Methods("GET")
+	router.HandleFunc("/obtenerBanner", middlew.ChequeoBD(routers.ObtenerBanner)).Methods("GET")
+
+	router.HandleFunc("/altaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.AltaRelacion))).Methods("POST")
+  router.HandleFunc("/bajaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.BajaRelacion))).Methods("DELETE")
+  router.HandleFunc("/consultaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.ConsultaRelacion))).Methods("GET")
+
+  // Agregamos esta linea
+  router.HandleFunc("/listaUsuarios", middlew.ChequeoBD(middlew.ValidoJWT(routers.ListaUsuarios))).Methods("GET")
+
+  PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos el request ListaUsuarios
+
+4.1. Le agregamos los correspondientes Headers
+![imagen 37](/img/37.png)
+4.2. Ahora agregamos en el params page, type y el search
+![imagen 38](/img/38.png)
+
+5. Con esto ya podemos probar con el Send
+
+5.1. si enviamos el type = new nos devolvera aquellas personas a las que no seguimos
+5.2. si enviamos el type = follow nos devolvera aquellas personas a las que seguimos
+5.3. con esto tambien podemos mandar el tercer parametro search con un valor distinto a vacio

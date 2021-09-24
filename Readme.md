@@ -2199,3 +2199,312 @@ func Manejadores() {
 
 ***NOTA:*** las imagenes subidas al servidor local se mantiene mientras no las borremos, pero las imagenes subidas al servidor de HEROKU solo estaran ahi por 45 minutos, ya que es un servidor de prueba
 
+## RELACIONES PARA DAR DE ALTA UNA RELACION
+
+- Creamos el archivo ***relacion.go*** en la carpeta ***models***
+
+```go
+package models
+
+type Relacion struct {
+  UsuarioID string `bson:"usuarioid" json:"usuarioId"`
+  UsuarioRelacionID string `bson:"usuariorelacionid" json:"usuarioRelacionId"`
+}
+```
+
+### Creamos en la base de datos el insertar la relacion
+
+- Creamos el archivo ***insertoRelacion.go*** en la carpeta ***bd***
+
+```go
+package bd
+
+import(
+  "context"
+  "time"
+
+  "go.mongodb.org/mongo-driver/bson"
+  "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+func InsertoRelacion(t models.Relacion) (bool, error) {
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("relacion")
+
+  _, err := col.InsertOne(ctx, t)
+
+  if err != nil {
+    return false, err
+  }
+
+  return true, nil
+}
+```
+
+### Creamos la ruta para el alta de las relaciones
+
+- Creamos el archivo ***altaRelacion.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+	"net/http"
+
+	"github.com/miguelmalagaortega/twittor/bd"
+	"github.com/miguelmalagaortega/twittor/models"
+)
+
+func AltaRelacion(w http.ResponseWriter, r* http.Request){
+
+  ID := r.URL.Query().Get("id")
+
+  if len(ID) < 1 {
+    http.Error(w, "El parametro ID es obligatorio", http.StatusBadRequest)
+    return
+  }
+
+  var t models.Relacion
+  t.UsuarioID = IDUsuario
+  t.UsuarioRelacionID = ID
+
+  status, err := bd.InsertoRelacion(t)
+
+  if err != nil {
+    http.Error(w, "Ocurrio un error al intentar insertar la relacion " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  if !status {
+    http.Error(w, "No se ha logrado insertar la relacion " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  w.WriteHeader(http.StatusCreated)
+
+}
+```
+
+### Probando el EndPoint de Relacion
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+	router.HandleFunc("/eliminarTweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.EliminarTweet))).Methods("DELETE")
+
+	router.HandleFunc("/subirAvatar", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirAvatar))).Methods("POST")
+	router.HandleFunc("/subirBanner", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirBanner))).Methods("POST")
+	router.HandleFunc("/obtenerAvatar", middlew.ChequeoBD(routers.ObtenerAvatar)).Methods("GET")
+	router.HandleFunc("/obtenerBanner", middlew.ChequeoBD(routers.ObtenerBanner)).Methods("GET")
+  // Agregamos esta linea
+	router.HandleFunc("/altaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.AltaRelacion))).Methods("POST")
+
+  PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos algunos usuarios mas
+
+5. Creamos el request AltaRelacion
+
+5.1. Le agregamos los correspondientes Headers
+![imagen 31](/img/31.png)
+5.2. Ahora agregamos en el params los id de los usuarios con los que se relacionara
+![imagen 32](/img/32.png)
+
+6. Con esto ya podemos probar con el Send
+
+## RELACIONES PARA DAR DE BAJA UNA RELACION
+
+### Creamos en la base de datos el borro  relacion
+
+- Creamos el archivo ***borroRelacion.go*** en la carpeta ***bd***
+
+```go
+package bd
+
+import(
+  "context"
+  "time"
+
+  "github.com/miguelmalagaortega/twittor/models"
+)
+
+func BorroRelacion(t models.Relacion) (bool, error) {
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("relacion")
+
+  _, err := col.DeleteOne(ctx, t)
+
+  if err != nil {
+    return false, err
+  }
+
+  return true, nil
+}
+```
+
+### Creamos la ruta para el baja de las relaciones
+
+- Creamos el archivo ***bajaRelacion.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+	"net/http"
+
+	"github.com/miguelmalagaortega/twittor/bd"
+	"github.com/miguelmalagaortega/twittor/models"
+)
+
+func BajaRelacion(w http.ResponseWriter, r* http.Request){
+
+  ID := r.URL.Query().Get("id")
+
+  if len(ID) < 1 {
+    http.Error(w, "El parametro ID es obligatorio", http.StatusBadRequest)
+    return
+  }
+
+  var t models.Relacion
+  t.UsuarioID = IDUsuario
+  t.UsuarioRelacionID = ID
+
+  status, err := bd.BorroRelacion(t)
+
+  if err != nil {
+    http.Error(w, "Ocurrio un error al intentar borrar la relacion " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  if !status {
+    http.Error(w, "No se ha logrado borrar la relacion " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  w.WriteHeader(http.StatusCreated)
+
+}
+```
+
+### Probando el EndPoint de Relacion
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+	router.HandleFunc("/eliminarTweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.EliminarTweet))).Methods("DELETE")
+
+	router.HandleFunc("/subirAvatar", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirAvatar))).Methods("POST")
+	router.HandleFunc("/subirBanner", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirBanner))).Methods("POST")
+	router.HandleFunc("/obtenerAvatar", middlew.ChequeoBD(routers.ObtenerAvatar)).Methods("GET")
+	router.HandleFunc("/obtenerBanner", middlew.ChequeoBD(routers.ObtenerBanner)).Methods("GET")
+
+	router.HandleFunc("/altaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.AltaRelacion))).Methods("POST")
+  // Agregamos esta linea
+  router.HandleFunc("/bajaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.BajaRelacion))).Methods("DELETE")
+
+  PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos el request BajaRelacion
+
+4.1. Le agregamos los correspondientes Headers
+![imagen 33](/img/33.png)
+4.2. Ahora agregamos en el params los id de los usuarios que eliminaremos la relacion
+![imagen 34](/img/34.png)
+
+5. Con esto ya podemos probar con el Send

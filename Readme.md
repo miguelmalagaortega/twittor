@@ -2905,3 +2905,207 @@ func Manejadores() {
 5.1. si enviamos el type = new nos devolvera aquellas personas a las que no seguimos
 5.2. si enviamos el type = follow nos devolvera aquellas personas a las que seguimos
 5.3. con esto tambien podemos mandar el tercer parametro search con un valor distinto a vacio
+
+## Creacion del ENDPOINT para ver los tweets de los que me siguen
+
+### creamos en los modelos la funcion para devolver los tweets
+
+- Creamos el archivo ***devuelvoTweetsSeguidores.go*** dentro de la carpeta ***models***
+
+```go
+package models
+
+import (
+  "time"
+
+  "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+type DevuelvoTweetsSeguidores struct {
+  ID  primitive.ObjectID `bson:"_id" json:"_id,omitempty"`
+  UsuarioID  string `bson:"usuarioid" json:"userId,omitempty"`
+  UsuarioRelacionID  string `bson:"usuariorelacionid" json:"userRelationId,omitempty"`
+  Tweet struct {
+    Mensaje string `bson:"mensaje" json:"mensaje,omitempty"`
+    Fecha time.Time `bson:"fecha" json:"fecha,omitempty"`
+    ID  string `bson:"_id" json:"_id,omitempty"`
+  }
+}
+```
+
+### creamos en la base de datos la funcion para leer los tweets
+
+- Creamos el archivo ***leoTweetsSeguidores.go*** dentro de la carpeta ***bd*** 
+
+```go
+package bd
+
+import(
+  "context"
+  "time"
+
+  "github.com/miguelmalagaortega/twittor/models"
+  "go.mongodb.org/mongo-driver/bson"
+)
+
+func LeoTweetsSeguidores(ID string, pagina int) ([]models.DevuelvoTweetsSeguidores, bool){
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("relacion")
+
+  skip := (pagina-1)*20
+
+  condiciones := make([]bson.M, 0)
+  condiciones = append(condiciones, bson.M{"$match": bson.M{"usuarioid":ID}})
+  condiciones = append(condiciones, bson.M{
+    "$lookup": bson.M{
+      "from": "tweet",
+      "localField": "usuariorelacionid",
+      "foreignField": "userid",
+      "as":"tweet",
+    },
+  })
+
+  condiciones = append(condiciones, bson.M{"$unwind":"$tweet"})
+  condiciones = append(condiciones, bson.M{"$sort": bson.M{"fecha":-1}})
+  condiciones = append(condiciones, bson.M{"$skip":skip})
+  condiciones = append(condiciones, bson.M{"$limit":20})
+
+  cursor, err := col.Aggregate(ctx, condiciones)
+
+  var result []models.DevuelvoTweetsSeguidores
+
+  err = cursor.All(ctx, &result)
+
+  if err != nil {
+    return result, false
+  }
+
+  return result, true
+}
+```
+
+### creamos en las rutas el archivo
+
+- Creamos el archivo ***leoTweetsRelacion.go*** dentro de la carpeta ***routers*** 
+
+```go
+package routers
+
+import (
+  "encoding/json"
+  "fmt"
+  "net/http"
+  "strconv"
+
+  "github.com/miguelmalagaortega/twittor/bd"
+)
+
+func LeoTweetsSeguidores(w http.ResponseWriter, r *http.Request){
+
+  if len(r.URL.Query().Get("pagina")) < 1 {
+    http.Error(w, "Debe enviar el parametro pagina", http.StatusBadRequest)
+    return
+  }
+
+  pagina, err := strconv.Atoi(r.URL.Query().Get("pagina"))
+
+  if err != nil {
+    http.Error(w, "Debe enviar el parametro pagina como entero mayor a 0", http.StatusBadRequest)
+    return
+  }
+
+  respuesta, correcto := bd.LeoTweetsSeguidores(IDUsuario, pagina)
+
+  if !correcto {
+    http.Error(w, "Error al leer los Tweets", http.StatusBadRequest)
+    return
+  }
+
+  w.Header().Set("Content-Type","application/json")
+  w.WriteHeader(http.StatusCreated)
+  json.NewEncoder(w).Encode(respuesta)
+
+}
+```
+
+### Probando el EndPoint de lista de usuarios
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+	router.HandleFunc("/eliminarTweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.EliminarTweet))).Methods("DELETE")
+
+	router.HandleFunc("/subirAvatar", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirAvatar))).Methods("POST")
+	router.HandleFunc("/subirBanner", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirBanner))).Methods("POST")
+	router.HandleFunc("/obtenerAvatar", middlew.ChequeoBD(routers.ObtenerAvatar)).Methods("GET")
+	router.HandleFunc("/obtenerBanner", middlew.ChequeoBD(routers.ObtenerBanner)).Methods("GET")
+
+	router.HandleFunc("/altaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.AltaRelacion))).Methods("POST")
+  router.HandleFunc("/bajaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.BajaRelacion))).Methods("DELETE")
+  router.HandleFunc("/consultaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.ConsultaRelacion))).Methods("GET")
+
+  router.HandleFunc("/listaUsuarios", middlew.ChequeoBD(middlew.ValidoJWT(routers.ListaUsuarios))).Methods("GET")
+
+  // Agregamos esta linea
+  router.HandleFunc("/leoTweetsSeguidores", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweetsSeguidores))).Methods("GET")
+
+
+  PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos el request LeoTweetsSeguidores
+
+4.1. Le agregamos los correspondientes Headers
+![imagen 39](/img/39.png)
+4.2. Ahora agregamos en el params el page
+![imagen 40](/img/40.png)
+
+5. Con esto ya podemos probar con el Send
+

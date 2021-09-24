@@ -1908,3 +1908,294 @@ func Manejadores() {
 ![imagen 26](/img/26.png)
 
 4.4. Con esto ya podemos probar con el Send
+
+## Iniciando con las imagenes
+
+### Creamos la ruta para subir la imagen Avatar
+
+- Creamos el archivo ***subirAvatar.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+  "io"
+  "net/http"
+  "os"
+  "strings"
+
+  "github.com/miguelmalagaortega/twittor/bd"
+  "github.com/miguelmalagaortega/twittor/models"
+)
+
+func SubirAvatar(w http.ResponseWriter, r *http.Request){
+  
+  // lo trataremos con un formulario
+  file, handler, err := r.FormFile("avatar")
+
+  if err != nil {
+		http.Error(w, "No se envio la imagen! "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+  // separamos el nombre de la extension
+  var extension = strings.Split(handler.Filename, ".")[1]
+
+  // creamos la carpeta avatars
+  // y de ahi creamos el nombre del archivo
+  var archivo string = "uploads/avatars/" + IDUsuario + "." + extension
+
+  // le damos los permisos de lectura y escritura al archivo en el SO
+  f, err := os.OpenFile(archivo, os.O_WRONLY | os.O_CREATE, 0666)
+
+  if err != nil {
+    http.Error(w, "Error al subir la imagen! " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  _, err = io.Copy(f, file)
+
+  if err != nil {
+    http.Error(w, "Error al copiar la imagen! " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  var usuario models.Usuario
+  var status bool
+
+  usuario.Avatar = IDUsuario + "." + extension
+  status, err = bd.ModificoRegistro(usuario, IDUsuario)
+
+  if err != nil || !status {
+    http.Error(w, "Error al grabar el avatar en la BD " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  w.Header().Set("Content-Type","application/json")
+  w.WriteHeader(http.StatusCreated)
+}
+```
+
+### Creamos la ruta para subir la imagen Banner
+
+- Creamos el archivo ***subirBanner.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+	"io"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/miguelmalagaortega/twittor/bd"
+	"github.com/miguelmalagaortega/twittor/models"
+)
+
+func SubirBanner(w http.ResponseWriter, r *http.Request) {
+
+	file, handler, err := r.FormFile("banner")
+
+	if err != nil {
+		http.Error(w, "No se envio la imagen! "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var extension = strings.Split(handler.Filename, ".")[1]
+
+	var archivo string = "uploads/banners/" + IDUsuario + "." + extension
+
+	f, err := os.OpenFile(archivo, os.O_WRONLY|os.O_CREATE, 0666)
+
+	if err != nil {
+		http.Error(w, "Error al subir la imagen! "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_, err = io.Copy(f, file)
+
+	if err != nil {
+		http.Error(w, "Error al copiar la imagen! "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var usuario models.Usuario
+	var status bool
+
+	usuario.Banner = IDUsuario + "." + extension
+
+	status, err = bd.ModificoRegistro(usuario, IDUsuario)
+
+	if err != nil || !status {
+		http.Error(w, "Error al grabar el banner en la BD "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+}
+```
+
+### Obtener el avatar y el banner
+
+- Creamos el archivo ***obtenerAvatar.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+	"io"
+	"net/http"
+	"os"
+
+	"github.com/miguelmalagaortega/twittor/bd"
+)
+
+func ObtenerAvatar(w http.ResponseWriter, r *http.Request){
+
+  ID := r.URL.Query().Get("id")
+
+  perfil, err := bd.BuscoPerfil(ID)
+
+  if err != nil {
+    http.Error(w, "Usuario no encontrado", http.StatusBadRequest)
+    return
+  }
+
+  OpenFile, err := os.Open("uploads/avatars/" + perfil.Avatar)
+
+  if err != nil {
+    http.Error(w, "Imagen no encontrado", http.StatusBadRequest)
+    return
+  }
+
+  _, err = io.Copy(w, OpenFile)
+
+  if err != nil {
+    http.Error(w, "Error al copiar la imagen", http.StatusBadRequest)
+    return
+  }
+
+}
+```
+
+- Creamos el archivo ***obtenerBanner.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+	"io"
+	"net/http"
+	"os"
+
+	"github.com/miguelmalagaortega/twittor/bd"
+)
+
+func ObtenerBanner(w http.ResponseWriter, r *http.Request){
+
+  ID := r.URL.Query().Get("id")
+
+  perfil, err := bd.BuscoPerfil(ID)
+
+  if err != nil {
+    http.Error(w, "Usuario no encontrado", http.StatusBadRequest)
+    return
+  }
+
+  OpenFile, err := os.Open("uploads/avatars/" + perfil.Banner)
+
+  if err != nil {
+    http.Error(w, "Imagen no encontrado", http.StatusBadRequest)
+    return
+  }
+
+  _, err = io.Copy(w, OpenFile)
+
+  if err != nil {
+    http.Error(w, "Error al copiar la imagen", http.StatusBadRequest)
+    return
+  }
+
+}
+```
+
+### Probando el EndPoint de subirImagenes
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+	router.HandleFunc("/eliminarTweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.EliminarTweet))).Methods("DELETE")
+  // Agregamos esta linea
+	router.HandleFunc("/subirAvatar", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirAvatar))).Methods("POST")
+	router.HandleFunc("/subirBanner", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirBanner))).Methods("POST")
+	router.HandleFunc("/obtenerAvatar", middlew.ChequeoBD(routers.ObtenerAvatar)).Methods("GET")
+	router.HandleFunc("/obtenerBanner", middlew.ChequeoBD(routers.ObtenerBanner)).Methods("GET")
+
+	PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos un nuevo request en POSTMAN
+
+4.1. Creamos el request SuboAvatar
+
+4.1.1. Le agregamos los correspondientes Headers
+![imagen 27](/img/27.png)
+4.1.2. Ahora agregamos en el body el archivo con formato File
+![imagen 28](/img/28.png)
+
+4.2. Creamos el request SuboBanner
+
+4.2.1. Le agregamos los correspondientes Headers
+![imagen 29](/img/29.png)
+4.2.2. Ahora agregamos en el body el archivo con formato File
+![imagen 30](/img/30.png)
+
+5. Con esto ya podemos probar con el Send
+
+***NOTA:*** las imagenes subidas al servidor local se mantiene mientras no las borremos, pero las imagenes subidas al servidor de HEROKU solo estaran ahi por 45 minutos, ya que es un servidor de prueba
+

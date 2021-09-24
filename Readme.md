@@ -2508,3 +2508,177 @@ func Manejadores() {
 ![imagen 34](/img/34.png)
 
 5. Con esto ya podemos probar con el Send
+
+## Consultar las relaciones
+
+### Agregamos a la bd el consulta de las relaciones
+
+- Creamos el archivo ***consultoRelacion.go*** en la carpeta ***bd***
+
+```go
+package bd
+
+import (
+  "context"
+  "time"
+  "log"
+
+  "github.com/miguelmalagaortega/twittor/models"
+  "go.mongodb.org/mongo-driver/bson"
+)
+
+func ConsultoRelacion(t models.Relacion) (bool, error){
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("relacion")
+
+  condicion := bson.M{
+    "usuarioid": t.UsuarioID,
+    "usuariorelacionid": t.UsuarioRelacionID,
+  }
+
+  var resultado models.Relacion
+
+  fmt.Println(resultado)
+
+  err := col.FindOne(ctx, condicion).Decode(&resultado)
+
+  if err != nil {
+    fmt.Println(err.Error())
+    return false, err
+  }
+
+  return true, nil
+}
+```
+
+### Creamos el modelo consultaRelacion
+
+- Creamos el archivo ***consultaRelacion.go*** en la carpeta ***models***
+
+```go
+package models
+
+type RespuestaConsultaRelacion struct {
+  Status bool `json:"status"`
+}
+```
+
+### Creamos la ruta consultaRelacion
+
+- Creamos el archivo ***consultaRelacion.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+  "encoding/json"
+  "net/http"
+
+  "github.com/miguelmalagaortega/twittor/models"
+  "github.com/miguelmalagaortega/twittor/bd"
+)
+
+func ConsultaRelacion(w http.ResponseWriter, r *http.Request){
+
+  ID := r.URL.Query().Get("id")
+
+  var t models.Relacion
+  t.UsuarioID = IDUsuario
+  t.UsuarioRelacionID = ID
+
+  var resp models.RespuestaConsultaRelacion
+
+  status, err := bd.ConsultoRelacion(t)
+
+  if err != nil || !status {
+    resp.Status = false
+  }else {
+    resp.Status = true
+  }
+
+  w.Header().Set("Content-Type","application/json")
+  w.WriteHeader(http.StatusCreated)
+  json.NewEncoder(w).Encode(resp)
+
+}
+```
+
+### Probando el EndPoint de consulta Relacion
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+	router.HandleFunc("/eliminarTweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.EliminarTweet))).Methods("DELETE")
+
+	router.HandleFunc("/subirAvatar", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirAvatar))).Methods("POST")
+	router.HandleFunc("/subirBanner", middlew.ChequeoBD(middlew.ValidoJWT(routers.SubirBanner))).Methods("POST")
+	router.HandleFunc("/obtenerAvatar", middlew.ChequeoBD(routers.ObtenerAvatar)).Methods("GET")
+	router.HandleFunc("/obtenerBanner", middlew.ChequeoBD(routers.ObtenerBanner)).Methods("GET")
+
+	router.HandleFunc("/altaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.AltaRelacion))).Methods("POST")
+  router.HandleFunc("/bajaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.BajaRelacion))).Methods("DELETE")
+  // Agregamos esta linea
+  router.HandleFunc("/consultaRelacion", middlew.ChequeoBD(middlew.ValidoJWT(routers.ConsultaRelacion))).Methods("GET")
+
+  PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos el request ConsultaRelacion
+
+4.1. Le agregamos los correspondientes Headers
+![imagen 35](/img/35.png)
+4.2. Ahora agregamos en el params el id del usuario del cual queremos corrobarar que esta relacionado con nosotros
+![imagen 36](/img/36.png)
+
+5. Con esto ya podemos probar con el Send
+
+5.1. Nos devolvera un status true si existe relacion con el usuario
+5.2. Nos devolvera un status false si no existe relacion con el usuario
+

@@ -1772,3 +1772,139 @@ func Manejadores() {
 ![imagen 24](/img/24.png)
 
 4.4. Con esto ya podemos probar con el Send
+
+## Borrar los tweets
+
+### En la base de datos creamos el archivo necesario
+
+- Creamos el archivo ***borroTweet.go*** en la carpeta ***bd***
+
+```go
+package bd
+
+import(
+  "context"
+
+  "go.mongodb.org/mongo-driver/bson"
+  "go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+func BorroTweet(ID string, UserID string) error {
+
+  ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+  defer cancel()
+
+  db := MongoCN.Database("twittor")
+  col := db.Collection("tweet")
+
+  objID, _ := primitive.ObjectIDFromHex(ID)
+
+  condicion := bson.M{
+    "_id": objID,
+    "userid":UserID,
+  }
+
+  _, err := col.DeleteOne(ctx, condicion)
+
+  return err
+}
+```
+
+### Continuamos con la ruta para el borrado
+
+- Creamos el archivo ***eliminarTweet.go*** en la carpeta ***routers***
+
+```go
+package routers
+
+import (
+	"net/http"
+
+	"github.com/miguelmalagaortega/twittor/bd"
+)
+
+func EliminarTweet(w http.ResponseWriter, r *http.Request){
+
+  ID := r.URL.Query().Get("id")
+
+  if len(ID) < 1 {
+    http.Error(w, "Debe enviar el parametro ID", http.StatusBadRequest)
+    return
+  }
+
+  err := bd.BorroTweet(ID, IDUsuario)
+
+  if err != nil{
+    http.Error(w, "Ocurrio un error al intentar borra el tweet " + err.Error(), http.StatusBadRequest)
+    return
+  }
+
+  w.Header().Set("Content-type","application/json")
+  w.WriteHeader(http.StatusCreated)
+}
+```
+
+### Probando el EndPoint de EliminarTweet
+
+1. Abrimos el archivo ***handlers.go*** de la carpeta ***handlers*** y agregamos
+
+```go
+package handlers
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/gorilla/mux"
+	"github.com/miguelmalagaortega/twittor/middlew"
+	"github.com/miguelmalagaortega/twittor/routers"
+	"github.com/rs/cors"
+)
+
+// Manejadores seteo mi puerto, el handler y pongo a escuchar al servidor
+func Manejadores() {
+	router := mux.NewRouter()
+
+	router.HandleFunc("/registro", middlew.ChequeoBD(routers.Registro)).Methods("POST")
+	router.HandleFunc("/login", middlew.ChequeoBD(routers.Login)).Methods("POST")
+	router.HandleFunc("/verperfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.VerPerfil))).Methods("GET")
+	router.HandleFunc("/modificarPerfil", middlew.ChequeoBD(middlew.ValidoJWT(routers.ModificarPerfil))).Methods("PUT")
+	router.HandleFunc("/tweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.GraboTweet))).Methods("POST")
+	router.HandleFunc("/leoTweets", middlew.ChequeoBD(middlew.ValidoJWT(routers.LeoTweets))).Methods("GET")
+  // Agregamos esta linea
+	router.HandleFunc("/eliminarTweet", middlew.ChequeoBD(middlew.ValidoJWT(routers.EliminarTweet))).Methods("DELETE")
+
+	PORT := os.Getenv("PORT")
+
+	if PORT == "" {
+		PORT = "8080"
+	}
+
+	handler := cors.AllowAll().Handler(router)
+
+	log.Fatal(http.ListenAndServe(":"+PORT, handler))
+
+}
+
+```
+
+2. Compilamos el archivo con
+
+> go build main.go
+
+3. Hacemos el comit del proyecto y lo subimos a github y heroku
+
+> git push -u origin main
+> git push heroku main
+
+4. Creamos un nuevo request en POSTMAN
+
+4.1. Creamos el request BorroTweet
+
+4.1.1. Le agregamos el id del tweet que eliminaremos de la tabla tweets
+![imagen 25](/img/25.png)
+4.1.2. Ahora agregamos los correspondientes Headers
+![imagen 26](/img/26.png)
+
+4.4. Con esto ya podemos probar con el Send
